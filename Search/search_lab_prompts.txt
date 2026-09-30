@@ -1,0 +1,134 @@
+Artificial Intelligence Laboratory: Search
+Appendix - LLM prompts used, in order
+
+The Task 0 formulation and the Task 1 design were written before any prompt was
+issued. Prompt 1 therefore states a specification rather than asking for a
+program that "solves the maze".
+
+-------------------------------------------------------------------------------
+PROMPT 1 - initial implementation (Task 2)
+-------------------------------------------------------------------------------
+I am implementing a simple goal-based search agent in Python.
+
+The environment is a grid represented by an ASCII map. The agent starts at S
+and must reach G. The symbol # represents obstacles and . represents free
+cells. The agent can move up, down, left or right, and every movement has
+cost 1.
+
+Implement A* search. Use Manhattan distance as the heuristic:
+h(n) = |x - xG| + |y - yG|.
+
+The program should:
+ - parse the map from a string rather than hardcoding coordinates;
+ - represent grid positions as states, as (row, col) tuples;
+ - maintain an appropriate frontier;
+ - calculate g(n), h(n) and f(n);
+ - avoid repeatedly expanding the same state;
+ - reconstruct the path when the goal is reached;
+ - report the path and its length;
+ - report the number of states expanded.
+
+Keep the implementation simple and explain the main components of the code.
+Keep the environment, the actions, the transition function, the goal test and
+the search itself in separately identifiable places, because I need to point at
+each of them afterwards.
+
+[map pasted verbatim beneath the prompt]
+
+-------------------------------------------------------------------------------
+PROMPT 2 - testing (Task 3)
+-------------------------------------------------------------------------------
+Add tests rather than only a demonstration run. Specifically:
+
+ 1. validate the returned path: check that it starts at S, ends at G, contains
+    no obstacle cell, that consecutive cells differ by exactly one square, and
+    that no cell repeats. Print a pass or fail line for each check.
+ 2. add a trivial map where G is adjacent to S and confirm a one-step solution.
+ 3. add a map where G is walled off and confirm the program reports failure
+    instead of looping.
+ 4. add a map with two routes of different length and confirm the returned path
+    is the shorter one.
+
+For test 4, do not compare the path against a number I supply. Compute the
+optimum independently with breadth-first search and compare against that.
+
+-------------------------------------------------------------------------------
+PROMPT 3 - blind search comparison (Task 5)
+-------------------------------------------------------------------------------
+Produce a breadth-first search version of the same agent, using the same Grid
+class, the same successor function and the same path reconstruction, so that
+the only difference between the two algorithms is how the frontier is ordered.
+Do not change the warehouse map.
+
+Report solution found, path length and states expanded for both, and also
+report the peak frontier size.
+
+-------------------------------------------------------------------------------
+PROMPT 4 - explanation of the heuristic (Task 6)
+-------------------------------------------------------------------------------
+Explain why Manhattan distance is an appropriate heuristic for this warehouse
+when the robot can move only horizontally and vertically. State explicitly
+whether it is admissible and why, and say what would change if diagonal moves
+were allowed.
+
+[LLM answer, summarised: with only four-way unit-cost moves, any path must
+cover the row difference and the column difference separately, so Manhattan
+distance is exactly the cost on an obstacle-free grid and can only be an
+underestimate once obstacles are added. It is therefore admissible, and it is
+the strongest admissible heuristic available from coordinates alone. With
+diagonal moves permitted the row and column differences can be covered
+simultaneously, Manhattan would overestimate, and the octile or Chebyshev
+distance would be the correct choice instead.]
+
+-------------------------------------------------------------------------------
+PROMPT 5 - heuristic experiments (Task 6)
+-------------------------------------------------------------------------------
+Make the heuristic a parameter of the A* function so I can substitute h = 0,
+Manhattan, Euclidean and 2 x Manhattan without duplicating the search code.
+For each version report whether a solution was found, the path length and the
+number of states expanded.
+
+Also add an empirical admissibility check: compute h*(n) for every free cell by
+running breadth-first search backwards from G, then count how many cells each
+heuristic overestimates and by how much. I want the admissibility claim
+measured, not asserted.
+
+-------------------------------------------------------------------------------
+PROMPT 6 - follow-up after the Task 5 and Task 6 results came out flat
+-------------------------------------------------------------------------------
+On the supplied map, BFS and A* both expand all 64 free cells and all four
+heuristics return the same 40-move path, so the comparison shows nothing. Before
+changing anything, explain why that would happen on this particular map.
+
+[LLM answer, summarised: A* must expand every state whose f value is below the
+optimal cost, so if nearly all free cells satisfy g*(n) + h(n) <= C* there is
+nothing available to prune, and a narrow corridor map has exactly that
+property.]
+
+I then asked for two additions to test that explanation rather than accept it:
+ - count the free cells satisfying f* = g*(n) + h(n) <= C*, and report the
+   number of cells, edges and the degree distribution of the free space, so the
+   corridor claim is measured;
+ - add a supplementary open-hall map, leaving the supplied warehouse untouched,
+   and repeat the BFS/A* comparison and the heuristic comparison on it;
+ - sweep the heuristic weight w over 0, 1, 2, 3, 5 and 10 to find where
+   optimality is actually lost on the supplied map.
+
+-------------------------------------------------------------------------------
+NOTES ON WHAT WAS ACCEPTED AND WHAT WAS CHANGED
+-------------------------------------------------------------------------------
+Accepted essentially unchanged: the Grid class and map parsing, the heapq
+frontier, the parent-dictionary path reconstruction, and the explanation of
+Manhattan admissibility in Prompt 4.
+
+Changed by hand after inspection:
+ - the first version pushed a successor onto the heap without checking whether a
+   cheaper route to it already existed, so the heap accumulated stale
+   duplicates. The g-value test was added.
+ - the first version used only (f, state) as the heap entry, which raises a
+   TypeError when two states tie on f because tuples then compare the states
+   themselves. A g value and an insertion counter were added as tie-breakers.
+ - the first version's "no path" branch existed but was never executed by any
+   test, so Prompt 2 was needed to make the failure case a real test.
+ - the claim that the path was shortest was originally a comment. It is now
+   checked against an independent BFS optimum.

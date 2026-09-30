@@ -1,0 +1,262 @@
+
+========================================================================
+TASK 0 AND TASK 1 - PROBLEM FORMULATION AND AGENT DESIGN
+========================================================================
+The warehouse map:
+#################
+#S....#.........#
+#.###.#.#######.#
+#...#.#.......#.#
+###.#.#######.#.#
+#...#.........#.#
+#.###########.#.#
+#.............#G#
+#################
+
+Search problem P = (S, A, T, s0, G, c):
+  S  states     : (row, col) of a free cell; 64 of 153 cells are free
+  A  actions    : Up, Down, Left, Right
+  T  transition : T(s, a) = s + offset(a), defined only when the
+                  target cell is on the map and is not an obstacle
+  s0 initial    : (1, 1)  (the cell marked S)
+  G  goals      : {(7, 15)}  (the cell marked G)
+  c  cost       : 1 per move, so path cost = number of moves
+
+(a) A state needs only the robot's (row, col) position. The map is
+    static and the robot carries nothing, so no other information
+    affects which actions are available or what they lead to.
+(b) An action is invalid if its target cell lies outside the grid
+    or contains an obstacle.
+(c) Yes, it is deterministic: each action from a given state leads
+    to exactly one successor state, and the map never changes.
+(d) A solution is a sequence of valid actions from s0 whose final
+    state is G. An optimal solution is one of least total cost,
+    which here means the fewest moves.
+
+Design decisions (Task 1):
+  1. state          : a (row, col) tuple - immutable, so it can be
+                      used as a dictionary key and set member
+  2. warehouse      : list of lists of characters, parsed from the
+                      ASCII map rather than hardcoded
+  3. valid actions  : Grid.successors(), which filters the four
+                      offsets through Grid.is_free()
+  4. goal test      : Grid.is_goal(), an equality check against G
+  5. frontier holds : (f, g, tie-breaker, state) so the heap orders
+                      by f and g is available without a lookup
+  6. path rebuilt   : parent dictionary, walked back from G
+  Reported on exit  : solution found or not, the path, its length,
+                      and the number of states expanded.
+  Lower bound on any solution: Manhattan(s0, G) = 20 moves.
+
+========================================================================
+TASK 3 - TESTING THE GENERATED PROGRAM
+========================================================================
+Test 1 - the original warehouse map
+  solution found   : True
+  path length      : 40 moves (cost 40)
+  states expanded  : 64
+  peak frontier    : 3
+  path drawn on the map:
+    #################
+    #S****#*********#
+    #.###*#*#######*#
+    #...#*#*******#*#
+    ###.#*#######*#*#
+    #...#*********#*#
+    #.###########.#*#
+    #.............#G#
+    #################
+  path as coordinates:
+    (1, 1) (1, 2) (1, 3) (1, 4) (1, 5) (2, 5) (3, 5) (4, 5) (5, 5) (5, 6) (5, 7) (5, 8) (5, 9) (5, 10) (5, 11) (5, 12) (5, 13) (4, 13) (3, 13) (3, 12) (3, 11) (3, 10) (3, 9) (3, 8) (3, 7) (2, 7) (1, 7) (1, 8) (1, 9) (1, 10) (1, 11) (1, 12) (1, 13) (1, 14) (1, 15) (2, 15) (3, 15) (4, 15) (5, 15) (6, 15) (7, 15)
+  validation:
+    PASS  starts at S
+    PASS  ends at G
+    PASS  all cells free
+    PASS  steps of exactly one cell
+    PASS  no repeated cell
+    PASS  length 40 equals the BFS optimum 40
+
+Test 2 - trivial case, goal adjacent to the start
+    #####
+    #SG##
+    #####
+  solution found   : True
+  path             : [(1, 1), (1, 2)]
+  path length      : 1 move
+  states expanded  : 2
+  PASS  one-step solution found
+
+Test 3 - no solution, goal walled off
+    #######
+    #S....#
+    ###.###
+    #...#G#
+    #######
+  solution found   : False
+  reported         : No path exists from S to G
+  states expanded before the frontier emptied: 9
+  free cells on the map: 10
+  PASS  terminates and reports failure instead of looping
+
+Test 4 - alternative paths, is the returned path shortest?
+    #########
+    #S.....G#
+    #.#####.#
+    #.......#
+    #########
+  the top corridor gives a 6-move route; going round the bottom
+  loop gives a longer one, so the two routes are not equal
+  A* path length   : 6 moves
+  BFS path length  : 6 moves (independent optimum)
+  A* route         : (1, 1) (1, 2) (1, 3) (1, 4) (1, 5) (1, 6) (1, 7)
+  PASS  A* returned a shortest path
+
+========================================================================
+TASK 4 - WHERE EACH CONCEPT APPEARS IN THE CODE
+========================================================================
+  State                a (row, col) tuple; created in Grid._find and Grid.result
+  Action               the ACTIONS dictionary of four (row, col) offsets
+  Transition           Grid.result(state, action), filtered by Grid.successors
+  Goal test            Grid.is_goal(state), called just after a pop in astar
+  g(n)                 the g dictionary and g_cur in astar; new_g = g_cur + step
+  h(n)                 the heuristic argument, e.g. h_manhattan(nxt, goal)
+  f(n)                 new_g + heuristic(nxt, goal), computed in the heappush call
+  Frontier             the `frontier` list used as a heap via heapq
+  Visited states       the `closed` set, plus the g-value test on reopening
+  Path reconstruction  the `parent` dictionary, walked by reconstruct()
+
+(a) The frontier is a binary heap (a priority queue) held in a list
+    and managed by heapq, ordered by f and then by g.
+(b) The next state to expand is the one with the smallest f value,
+    taken by heapq.heappop; ties are broken by g and then by an
+    insertion counter, which keeps the ordering deterministic.
+(c) The heuristic is calculated when a successor is pushed onto the
+    frontier, not when it is popped, so each state's h is computed
+    once per insertion.
+(d) Yes. f is formed explicitly as new_g + heuristic(nxt, goal) and
+    stored as the first element of the heap entry.
+(e) Two mechanisms. The `closed` set means a state is expanded at
+    most once, and the test `nxt not in g or new_g < g[nxt]` means a
+    state is only re-queued when a strictly cheaper route to it has
+    been found, which stops the heap filling with worse duplicates.
+
+========================================================================
+TASK 5 - A* COMPARED WITH BLIND SEARCH
+========================================================================
+On the supplied warehouse map (unchanged):
+Measure                 Solution   Path length   States expanded   Peak frontier
+BFS (blind)                 True            40                64               3
+A* (Manhattan)              True            40                64               3
+Greedy (Manhattan)          True            48                58               3
+  (the map has 64 free cells in total)
+
+Why BFS and A* expand the same number of states here:
+  the free space is 64 cells joined by 64 edges, and 62 of those cells have exactly two neighbours,
+  so the warehouse is one long winding corridor with a single
+  junction rather than an open area with choices.
+  A* must expand every state whose f* = g*(n) + h(n) is below the
+  optimal cost C* = 40. On this map 64 of the 64 free cells
+  satisfy f* <= C*, so there is provably nothing for the heuristic
+  to prune. The tie is a property of the map, not a bug.
+
+Supplementary map (open hall, supplied warehouse left untouched):
+Measure                 Solution   Path length   States expanded
+BFS (blind)                 True             8               113
+A* (Manhattan)              True             8                 9
+  (this map has 261 free cells)
+
+(a) Yes. BFS, A* and greedy all found a solution on the warehouse,
+    and BFS and A* both found one on the open hall.
+(b) BFS and A* returned paths of the same length, 40 moves. BFS is
+    optimal here because every move costs 1, so depth equals cost,
+    and A* is optimal because Manhattan is admissible. Greedy
+    returned 48 moves, which is 8 moves worse.
+(c) On the supplied map neither expanded fewer - both expanded all
+    64 free cells. Greedy expanded 58. On the open hall A* expanded
+    9 states against 113 for BFS.
+(d) A* can expand fewer states because it orders the frontier by
+    f = g + h, so a state that is cheap to reach but far from the
+    goal is deprioritised, and whole regions pointing away from G
+    are never opened. BFS orders by depth alone and so spreads
+    outwards in every direction equally. That saving only appears
+    when the map offers directions to reject, which is why it shows
+    up on the open hall and not in a corridor. Greedy shows the
+    other half of the story: it uses h but discards g, expands
+    slightly fewer states, and loses optimality as a result.
+
+========================================================================
+TASK 6 - INVESTIGATING THE HEURISTIC
+========================================================================
+Admissibility check against the true cost h*(n), computed by BFS
+backwards from G over all free cells:
+Heuristic         Admissible?  Violations   Worst h - h*
+h = 0                     yes           0           0.00
+Manhattan                 yes           0           0.00
+Euclidean                 yes           0           0.00
+2 x Manhattan              no          18          14.00
+  (64 free cells are reachable from G and were checked.)
+
+Search behaviour with each heuristic on the same warehouse map:
+Heuristic         Solution   Path length   States expanded   Optimal?
+h = 0                 True            40                64        yes
+Manhattan             True            40                64        yes
+Euclidean             True            40                64        yes
+2 x Manhattan         True            40                64        yes
+  (the true optimum, from BFS, is 40 moves)
+  Every version returns 40 moves and expands all 64 cells, for the
+  same reason as in Task 5: in a corridor there is nothing to prune
+  and only one sensible route, so the heuristic cannot change the
+  outcome. The interesting behaviour has to be provoked.
+
+Weight sweep on the supplied map: A* with h = w x Manhattan
+w       Admissible?   Path length   States expanded   Optimal?
+0               yes            40                64        yes
+1               yes            40                64        yes
+2                no            40                64        yes
+3                no            48                64         no
+5                no            48                64         no
+10               no            48                58         no
+
+Same four heuristics on the supplementary open hall:
+Heuristic          Path length   States expanded   Optimal?
+h = 0                        8               113        yes
+Manhattan                    8                 9        yes
+Euclidean                    8                 9        yes
+2 x Manhattan                8                 9        yes
+  (BFS on this map: 8 moves, 113 states expanded)
+
+1. h(n) = 0 removes all information about where the goal is, so f
+   reduces to g and A* becomes uniform-cost search. It stays
+   optimal but is uninformed: on the open hall it expands 113
+   states where Manhattan expands 9. On the corridor map it makes
+   no difference, because nothing can be pruned there anyway.
+2. Euclidean distance is admissible on this grid, because a
+   straight line is never longer than a path restricted to
+   horizontal and vertical moves. It is therefore safe, but it
+   underestimates more than Manhattan does, so in general it is a
+   weaker guide. On these two maps it happened to expand the same
+   number of states as Manhattan.
+3. Multiplying Manhattan by 2 makes the heuristic inadmissible -
+   18 of the 64 cells are overestimated, by up to 14 moves. On this
+   map it nevertheless still returned an optimal 40-move path, so
+   inadmissibility permits suboptimality rather than guaranteeing
+   it. The weight sweep locates where the guarantee actually fails:
+   at w = 3 and above the returned path becomes 48 moves, 8 worse
+   than the optimum, and at w = 10 it also expands fewer states.
+   Greedy search, which is the w -> infinity limit, gives the same
+   48-move path. This is the honest version of the answer: the
+   guarantee is lost as soon as w > 1, but the loss only becomes
+   visible on a given map once the weight is large enough.
+
+Think About It - too optimistic versus too aggressive:
+  A heuristic that is too optimistic (h = 0 is the extreme case)
+  keeps optimality but throws away guidance, so the search degrades
+  towards blind search and the cost is time and memory.
+  A heuristic that is too aggressive overestimates the remaining
+  cost, which breaks admissibility. The search gets faster, but the
+  answer is no longer guaranteed to be the best one - it trades
+  correctness for speed rather than buying speed for free.
+
+========================================================================
+END OF LABORATORY RUN
+========================================================================
